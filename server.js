@@ -7,8 +7,11 @@ const server = http.createServer((req, res) => {
   const url = req.url.split('?')[0];
   if (url === '/health') { res.end('ok'); return; }
   if (url === '/' || url === '/index.html') {
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
-    res.end(fs.readFileSync(path.join(__dirname, 'public', 'index.html')));
+    try {
+      const page = fs.readFileSync(path.join(__dirname, 'public', 'index.html'));
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
+      res.end(page);
+    } catch (e) { res.writeHead(500); res.end('public/index.html bulunamadi'); }
     return;
   }
   res.writeHead(404); res.end('not found');
@@ -19,6 +22,7 @@ const rooms = new Map();                       // kod -> { clients:Set, dirty:bo
 const rid = () => Math.random().toString(36).slice(2, 10);
 
 wss.on('connection', ws => {
+  ws.on('error', () => {});   // bozuk/büyük paketlerde sunucunun çökmesini engelle
   ws.alive = true; ws.peer = rid(); ws.room = null; ws.pres = {}; ws.last = 0;
   ws.on('pong', () => { ws.alive = true; });
   ws.on('message', buf => {
@@ -57,4 +61,6 @@ setInterval(() => {
   for (const ws of wss.clients) { if (!ws.alive) { ws.terminate(); continue; } ws.alive = false; ws.ping(); }
 }, 30000);
 
-server.listen(PORT, () => console.log('Granny sunucusu çalışıyor: :' + PORT));
+process.on('uncaughtException', e => console.error('Hata:', e.message));
+wss.on('error', e => console.error('WSS hatasi:', e.message));
+server.listen(PORT, '0.0.0.0', () => console.log('Granny sunucusu çalışıyor: :' + PORT));

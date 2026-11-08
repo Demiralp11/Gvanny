@@ -186,13 +186,17 @@ function onPeersChange(){const me=peersList.find(q=>q.isMe&&q.sameTab);myPeer=me
  if(!S.run)$('rs').textContent='Oda '+S.code+' · '+vs.length+' oyuncu bağlı — hazır olunca BAŞLA';
  const hp=peersList.find(q=>!q.isMe&&q.presence&&q.presence.hs);if(hp&&hp.presence.gc&&hp.presence.gc.p===myPeer&&hp.presence.gc.t!==LG&&S.run&&!S.cine&&!S.dead){LG=hp.presence.gc.t;seq()}}
 function syncDoors(){doors.forEach((d,i)=>{const r=RO[i];if(r&&!d.open){d.open=1;d.c.off=1;d.rem=1}else if(!r&&d.rem){d.rem=0;if(!d.own){d.open=0;d.c.off=0}}})}
-function wsRoom(code){return new Promise((res,rej)=>{let ws;try{ws=new WebSocket((location.protocol==='https:'?'wss://':'ws://')+location.host)}catch(e){return rej({code:'WebSocket yok'})}
+const WSU=new URLSearchParams(location.search).get('ws')||'wss://gvanny.onrender.com';
+function wsOnce(code){return new Promise((res,rej)=>{let ws,done=0;try{ws=new WebSocket(WSU)}catch(e){return rej({code:'WebSocket desteklenmiyor'})}
+ const fail=(c,retry=1)=>{if(done)return;done=1;clearTimeout(to);try{ws.close()}catch(e){}rej({code:c,retry})},to=setTimeout(()=>fail('zaman aşımı'),15000);
  let me=null,cbs=[];const api={onPeers(f){cbs.push(f)},presence(o){if(ws.readyState===1)ws.send(JSON.stringify({t:'pres',p:o}));return Promise.resolve()},leave(){try{ws.close()}catch(e){}return Promise.resolve()}};
  ws.onopen=()=>ws.send(JSON.stringify({t:'join',room:code}));
  ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(_){return}
-  if(m.t==='welcome'){me=m.peer;res(api)}else if(m.t==='full')rej({code:'Oda dolu (en fazla 8 kişi)'});
+  if(m.t==='welcome'){if(!done){done=1;clearTimeout(to);me=m.peer;res(api)}}else if(m.t==='full')fail('Oda dolu (en fazla 8 kişi)',0);
   else if(m.t==='peers'){const l=m.list.map(q=>({peer:q.peer,isMe:q.peer===me,sameTab:q.peer===me,kind:'viewer',presence:q.presence||{}}));cbs.forEach(f=>f({peers:l}))}};
- ws.onerror=()=>rej({code:'Sunucuya bağlanılamadı'});ws.onclose=()=>{if(S.run)msg('Sunucu bağlantısı koptu',4000)}})}
+ ws.onerror=()=>fail('bağlanılamadı');ws.onclose=()=>{if(!done)fail('bağlantı kapandı');else if(S.run)msg('Sunucu bağlantısı koptu',4000)}})}
+async function wsRoom(code){try{fetch(WSU.replace(/^ws/,'http')+'/health',{mode:'no-cors'}).catch(()=>{})}catch(e){}
+ for(let i=1;i<=8;i++){$('rs').textContent=i>1?'Sunucu uyanıyor… deneme '+i+'/8 (Render ilk açılışta 30-60 sn sürebilir)':'Sunucuya bağlanılıyor…';try{return await wsOnce(code)}catch(e){if(!e.retry||i===8)throw e;await new Promise(r=>setTimeout(r,3000))}}}
 async function joinRoom(code){code=code.toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,8);if(code.length<3){$('rs').textContent='Kod en az 3 karakter olmalı';return}
  try{if(RM){await RM.leave();RM=null}
   if(window.claude){const room=await window.claude.use('room');if(!room){$('rs').textContent='Oda sistemi bu görünümde yok (claude.ai’a giriş yapmış ve sayfaya erişimi olan oyuncular katılabilir)';return}RM=await room.join('gv-'+code)}
